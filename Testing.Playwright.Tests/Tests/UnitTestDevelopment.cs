@@ -4,15 +4,12 @@ using Xunit.Abstractions;
 
 namespace Testing.Playwright.Tests;
 
-public class UnitTestDevelopment : IClassFixture<PlaywrightWebApplicationFactoryDevelopment>
+public class UnitTestDevelopment : UnitTestBase, IClassFixture<PlaywrightWebApplicationFactoryDevelopment>
 {
-    private readonly PlaywrightWebApplicationFactory webApplication;
-    private readonly ITestOutputHelper outputHelper;
 
-    public UnitTestDevelopment(PlaywrightWebApplicationFactoryDevelopment webApplication, ITestOutputHelper outputHelper)
+    public UnitTestDevelopment(PlaywrightWebApplicationFactoryDevelopment webApplication, ITestOutputHelper outputHelper) :
+            base(webApplication, outputHelper)
     {
-        this.webApplication = webApplication;
-        this.outputHelper = outputHelper;
     }
 
     [Fact]
