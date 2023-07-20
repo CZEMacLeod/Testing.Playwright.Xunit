@@ -13,27 +13,6 @@ using Xunit.Abstractions;
 
 namespace Testing.Playwright.Tests;
 
-public class PlaywrightWebApplicationFactoryStaging : PlaywrightWebApplicationFactory
-{
-    public PlaywrightWebApplicationFactoryStaging(IMessageSink output) : base(output) { }
-
-    protected override string? Environment => Environments.Staging;
-}
-
-public class PlaywrightWebApplicationFactoryProduction : PlaywrightWebApplicationFactory
-{
-    public PlaywrightWebApplicationFactoryProduction(IMessageSink output) : base(output) { }
-
-    protected override string? Environment => Environments.Production;
-}
-
-public class PlaywrightWebApplicationFactoryDevelopment : PlaywrightWebApplicationFactory
-{
-    public PlaywrightWebApplicationFactoryDevelopment(IMessageSink output) : base(output) { }
-
-    protected override string? Environment => Environments.Development;
-}
-
 public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private IPlaywright? playwright;
@@ -41,14 +20,13 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
     private string? uri;
     private readonly IMessageSink output;
 
+    private static int nextPort = 0;
+
     public string? Uri => uri;
 
     protected virtual string? Environment { get; }
 
-    public PlaywrightWebApplicationFactory(IMessageSink output)
-    {
-        this.output = output;
-    }
+    public PlaywrightWebApplicationFactory(IMessageSink output) => this.output = output;
 
     [MemberNotNull(nameof(uri))]
     protected override IHost CreateHost(IHostBuilder builder)
@@ -59,19 +37,33 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
         }
         builder.ConfigureLogging(logging =>
         {
-            logging.SetMinimumLevel(LogLevel.Debug);
+            logging.SetMinimumLevel(LogLevel.Trace);
             logging.AddProvider(new MessageSinkProvider(output));
         });
 
-        var port = 5000 + System.Random.Shared.Next(1000);
+        // We randomize the server port so we ensure that any hard coded Uri's fail in the tests.
+        // This also allows multiple servers to run during the tests.
+        var port = 5000 + Interlocked.Add(ref nextPort, 10 + System.Random.Shared.Next(10));
         uri = $"http://localhost:{port}";
 
+        // We the testHost, which can be used with HttpClient with a custom transport
+        // It is assumed that the return of CreateHost is a host based on the TestHost Server.
         var testHost = base.CreateHost(builder);
+
+        // Now we reconfigure the builder to use kestrel so we have an http listener that can be used by playwright
         builder.ConfigureWebHost(webHostBuilder => webHostBuilder.UseKestrel(options =>
-           {
-               options.ListenLocalhost(port);
-           }));
+        {
+            options.ListenLocalhost(port);
+        }));
         var host = base.CreateHost(builder);
+        
+        UpdateUriFromHost(host);    // For some reason, the kestrel server host does not seem to return the addresses.
+
+        return new CompositeHost(testHost, host);
+    }
+
+    private void UpdateUriFromHost(IHost host)
+    {
         var server = host.Services.GetRequiredService<IServer>();
         var addresses = server.Features.Get<IServerAddressesFeature>() ?? throw new NullReferenceException("Could not get IServerAddressesFeature");
         var serverAddress = addresses.Addresses.FirstOrDefault();
@@ -85,14 +77,12 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
             var message = new Xunit.Sdk.DiagnosticMessage("Could not get server address from IServerAddressesFeature");
             output.OnMessage(message);
         }
-
-        return new CompositeHost(testHost, host);
     }
 
     public async Task<IPage> CreatePlaywrightPageAsync()
     {
-        var server = Server;
-        if (playwright is null || browser is null) { await InitializeAsync(); }    // Shouldn't be...
+        var server = Server;        // Ensure Server is initialized
+        await InitializeAsync();    // Ensure Playwright is initialized
 
         return await browser.NewPageAsync(new BrowserNewPageOptions()
         {
@@ -103,8 +93,8 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
     [MemberNotNull(nameof(playwright), nameof(browser))]
     public async Task InitializeAsync()
     {
-        playwright = (await Microsoft.Playwright.Playwright.CreateAsync()) ?? throw new InvalidOperationException();
-        browser = (await playwright.Chromium.LaunchAsync(new() { Headless = true })) ?? throw new InvalidOperationException();
+        playwright ??= (await Microsoft.Playwright.Playwright.CreateAsync()) ?? throw new InvalidOperationException();
+        browser ??= (await playwright.Chromium.LaunchAsync(new() { Headless = true })) ?? throw new InvalidOperationException();
     }
 
     async Task IAsyncLifetime.DisposeAsync()
@@ -118,6 +108,7 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
         playwright = null;
     }
 
+    // CompositeHost is based on https://github.com/xaviersolau/DevArticles/blob/e2e_test_blazor_with_playwright/MyBlazorApp/MyAppTests/WebTestingHostFactory.cs
     // Relay the call to both test host and kestrel host.
     public class CompositeHost : IHost
     {

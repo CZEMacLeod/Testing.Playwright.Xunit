@@ -57,7 +57,8 @@ namespace Testing.Playwright.Tests
             var page = await webApplication.CreatePlaywrightPageAsync();
 
             var response = await page.GotoAsync("/Unknown");
-
+            
+            Assert.NotNull(response);
             Assert.False(response.Ok);
 
         }
@@ -67,17 +68,19 @@ namespace Testing.Playwright.Tests
         {
             var page = await webApplication.CreatePlaywrightPageAsync();
 
-            var response = await page.GotoAsync("/BadRequest");
+            _ = await page.GotoAsync("/BadRequest");
 
             var hostEnv = webApplication.Server.Services.GetRequiredService<IHostEnvironment>();
             outputHelper.WriteLine("Host Environment {0}", hostEnv.EnvironmentName);
-            if (!hostEnv.IsDevelopment())
+            if (hostEnv.IsDevelopment())
             {
-                Assert.Equal("Error - Testing.Playwright", await page.TitleAsync());
+                // The title of the page from DeveloperExceptionPageMiddleware
+                Assert.Equal("Bad Request", await page.TitleAsync());
             }
             else
             {
-                Assert.Equal("Bad Request", await page.TitleAsync());
+                // The title of the page fro Error.cshtml
+                Assert.Equal("Error - Testing.Playwright", await page.TitleAsync());
             }
         }
     }

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http.Extensions;
+
 namespace Testing.Playwright
 {
     public class Program
@@ -5,11 +7,20 @@ namespace Testing.Playwright
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+            builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
             // Add services to the container.
             builder.Services.AddRazorPages();
 
             var app = builder.Build();
+
+            var logger = app.Services.GetRequiredService<ILogger<Program>>();
+            app.Use(async (ctx, next) =>
+            {
+                logger.LogInformation("HttpRequest: {Url}", ctx.Request.GetDisplayUrl());
+                await next();
+            });
+            app.UseHttpLogging();
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment())
@@ -28,6 +39,8 @@ namespace Testing.Playwright
             app.UseRouting();
 
             app.UseAuthorization();
+
+
 
             app.MapRazorPages();
 
