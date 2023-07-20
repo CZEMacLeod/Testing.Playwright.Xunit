@@ -9,11 +9,13 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Playwright;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Testing.Playwright.Tests.Utilities;
 using Xunit.Abstractions;
 
 namespace Testing.Playwright.Tests;
 
-public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class PlaywrightWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram>, IAsyncLifetime
+    where TProgram : class
 {
     private IPlaywright? playwright;
     private IBrowser? browser;
@@ -24,7 +26,29 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
 
     public string? Uri => uri;
 
-    protected virtual string? Environment { get; }
+    #region "Overridable Properties"
+    // Properties in this region can be overridden in a derived type and used as a fixture
+    // If you create multiple derived fixtures, and derived tests injecting each one into a base test class
+    // you can easily setup a test matrix for running a set of tests against multiple browsers and/or environments
+    public virtual string? Environment { get; }
+    public virtual PlaywrightBrowserType BrowserType => PlaywrightBrowserType.Chromium;
+
+    protected virtual BrowserTypeLaunchOptions LaunchOptions { get; } = new BrowserTypeLaunchOptions()
+    {
+        Headless = true
+    };
+
+    public virtual bool AddMessageSinkProvider => true;
+    public virtual LogLevel MinimumLogLevel => LogLevel.Trace;
+    #endregion
+
+    protected virtual IBrowserType GetBrowser() => BrowserType switch
+    {
+        PlaywrightBrowserType.Chromium=> playwright?.Chromium,
+        PlaywrightBrowserType.Firefox => playwright?.Firefox,
+        PlaywrightBrowserType.Webkit => playwright?.Webkit,
+        _ => throw new ArgumentOutOfRangeException(nameof(BrowserType))
+    } ?? throw new InvalidOperationException("Could not get browser type");
 
     public PlaywrightWebApplicationFactory(IMessageSink output) => this.output = output;
 
@@ -37,8 +61,11 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
         }
         builder.ConfigureLogging(logging =>
         {
-            logging.SetMinimumLevel(LogLevel.Trace);
-            logging.AddProvider(new MessageSinkProvider(output));
+            logging.SetMinimumLevel(MinimumLogLevel);
+            if (AddMessageSinkProvider)
+            {
+                logging.AddProvider(new MessageSinkProvider(output));
+            }
         });
 
         // We randomize the server port so we ensure that any hard coded Uri's fail in the tests.
@@ -93,8 +120,31 @@ public class PlaywrightWebApplicationFactory : WebApplicationFactory<Program>, I
     [MemberNotNull(nameof(playwright), nameof(browser))]
     public async Task InitializeAsync()
     {
+        PlaywrightUtilities.InstallPlaywright(BrowserType);
+#pragma warning disable CS8774 // Member must have a non-null value when exiting.
         playwright ??= (await Microsoft.Playwright.Playwright.CreateAsync()) ?? throw new InvalidOperationException();
-        browser ??= (await playwright.Chromium.LaunchAsync(new() { Headless = true })) ?? throw new InvalidOperationException();
+        browser ??= (await GetBrowser().LaunchAsync(LaunchOptions)) ?? throw new InvalidOperationException();
+#pragma warning restore CS8774 // Member must have a non-null value when exiting.
+    }
+
+    /// <summary>
+    /// Install and deploy all binaries Playwright may need.
+    /// </summary>
+    private static void ShowTrace(string traceName)
+    {
+        var exitCode = Microsoft.Playwright.Program.Main(
+          new[] { "install-deps" });
+        if (exitCode != 0)
+        {
+            throw new Exception(
+              $"Playwright exited with code {exitCode} on install-deps");
+        }
+        exitCode = Microsoft.Playwright.Program.Main(new[] { "install" });
+        if (exitCode != 0)
+        {
+            throw new Exception(
+              $"Playwright exited with code {exitCode} on install");
+        }
     }
 
     async Task IAsyncLifetime.DisposeAsync()

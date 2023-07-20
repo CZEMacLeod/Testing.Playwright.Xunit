@@ -3,9 +3,10 @@ using Xunit.Abstractions;
 
 namespace Testing.Playwright.Tests;
 
-public class PlaywrightWebApplicationFactoryStaging : PlaywrightWebApplicationFactory
+public class PlaywrightWebApplicationFactoryStaging<TProgram> : PlaywrightWebApplicationFactory<TProgram>
+    where TProgram : class
 {
     public PlaywrightWebApplicationFactoryStaging(IMessageSink output) : base(output) { }
 
-    protected override string? Environment => Environments.Staging;
+    public override string? Environment => Environments.Staging;
 }

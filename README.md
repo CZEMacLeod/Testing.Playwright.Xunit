@@ -11,8 +11,10 @@ This code 'hardcodes' the type in `PlaywrightWebApplicationFactory` to the web a
 As xunit does not allow passing any parameters to a fixture, there are types which explicitly set the `Environment` (via `UseEnvironment`) to be `Development`, `Staging`, or `Production`.
 Again you could inherit the fixture class and manually set a different environment if needed.
 
-This implementation is 'opinionated' in that it always uses Chromium as the browser. Xavier Solau`s solution shows how it would be possible to allow the test to decide which browser to use.
+This implementation is 'opinionated' in that it always uses one browser per fixture. Xavier Solau`s solution shows how it would be possible to allow the test to decide which browser to use.
 This would also potentially allow the tests to be run for all browsers using `InlineData`.
+
+However, by using derived fixture types you can override the Browser type, then you can simply inherit the tests class to run the same tests with different browsers, and/or environments.
 
 This works from inside VS2022 and from the command line with
 ```shell
