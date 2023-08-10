@@ -5,9 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Playwright;
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Testing.Playwright.Tests.Utilities;
 using Xunit.Abstractions;
@@ -64,7 +62,7 @@ public class PlaywrightWebApplicationFactory<TProgram> : WebApplicationFactory<T
             logging.SetMinimumLevel(MinimumLogLevel);
             if (AddMessageSinkProvider)
             {
-                logging.AddProvider(new MessageSinkProvider(output));
+                logging.AddXunit(output);
             }
         });
 
@@ -127,26 +125,6 @@ public class PlaywrightWebApplicationFactory<TProgram> : WebApplicationFactory<T
 #pragma warning restore CS8774 // Member must have a non-null value when exiting.
     }
 
-    /// <summary>
-    /// Install and deploy all binaries Playwright may need.
-    /// </summary>
-    private static void ShowTrace(string traceName)
-    {
-        var exitCode = Microsoft.Playwright.Program.Main(
-          new[] { "install-deps" });
-        if (exitCode != 0)
-        {
-            throw new Exception(
-              $"Playwright exited with code {exitCode} on install-deps");
-        }
-        exitCode = Microsoft.Playwright.Program.Main(new[] { "install" });
-        if (exitCode != 0)
-        {
-            throw new Exception(
-              $"Playwright exited with code {exitCode} on install");
-        }
-    }
-
     async Task IAsyncLifetime.DisposeAsync()
     {
         if (browser is not null)
@@ -184,49 +162,6 @@ public class PlaywrightWebApplicationFactory<TProgram> : WebApplicationFactory<T
         {
             await testHost.StopAsync(cancellationToken);
             await kestrelHost.StopAsync(cancellationToken);
-        }
-    }
-
-    private class MessageSinkProvider : ILoggerProvider
-    {
-        private IMessageSink? output;
-
-        private readonly ConcurrentDictionary<string, ILogger> _loggers = new(StringComparer.OrdinalIgnoreCase);
-
-        public MessageSinkProvider(IMessageSink output) => this.output = output;
-
-        public ILogger CreateLogger(string categoryName) =>
-            _loggers.GetOrAdd(categoryName, name => output is null ? NullLogger.Instance : new MessageSinkLogger(name, output));
-
-        protected virtual void Dispose(bool disposing) { output = null; }
-
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
-
-        private class MessageSinkLogger : ILogger
-        {
-            private string name;
-            private IMessageSink output;
-
-            public MessageSinkLogger(string name, IMessageSink output)
-            {
-                this.name = name;
-                this.output = output;
-            }
-
-            public IDisposable BeginScope<TState>(TState state) where TState : notnull => default!;
-
-            public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None;
-
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                var message = new Xunit.Sdk.DiagnosticMessage(name + ":" + formatter(state, exception));
-                output.OnMessage(message);
-            }
         }
     }
 }

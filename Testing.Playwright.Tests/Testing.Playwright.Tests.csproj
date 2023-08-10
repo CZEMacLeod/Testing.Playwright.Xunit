@@ -20,9 +20,11 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="6.0.20" />
     <PackageReference Include="Microsoft.Playwright" Version="1.36.0" />
-    
+    <PackageReference Include="C3D.Extensions.Logging.Xunit" Version="0.1.14" />
   </ItemGroup>
 
   <ItemGroup>
